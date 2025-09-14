@@ -1,0 +1,7 @@
+pyspark>=3.4
+kafka-python>=2.0.2
+pandas
+matplotlib
+folium
+geopy
+numpy
