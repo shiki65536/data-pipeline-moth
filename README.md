@@ -20,35 +20,113 @@ pip install -r requirements.txt
 
 2. Place CSVs in `data/` (category.csv, users.csv, product.csv, sales.csv, click_stream_rt.csv)
 
-3. Start Kafka broker (example using Docker):
+# MOTH E-Commerce Data Pipeline
 
-```bash
-# start zookeeper
-docker run -d --name zookeeper -p 2181:2181 zookeeper:3.7
-# start kafka (uses wurstmeister image; update as needed)
-docker run -d --name kafka -p 9092:9092 --env KAFKA_ZOOKEEPER_CONNECT=host.docker.internal:2181 --env KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092 --env KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092 wurstmeister/kafka
+End-to-end data pipeline using PySpark + Kafka for real-time eCommerce sales prediction and customer segmentation.
+
+## Architecture
 
 ```
-
-4. Create topic:
-
-```bash
-docker exec -it kafka bash -c "kafka-topics.sh --create --topic moth_clickstream --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1"
+CSV Data → Kafka Producer → Kafka Topic → Spark Streaming → ML Prediction → Visualization
 ```
 
-5. Run producer (example):
+## Project Structure
+
+```
+data-pipeline-moth/
+├── moth/                    # Core Python package
+│   ├── spark_utils.py       # Spark session utilities
+│   ├── batch_analysis.py    # Batch processing functions
+│   ├── kafka_producer.py    # Kafka data producer
+│   ├── streaming_job.py     # Spark Streaming job
+│   └── visualisation.py     # Data visualization helpers
+├── notebooks/               # Demo Jupyter notebooks
+├── scripts/                 # Shell scripts for automation
+├── data/                    # CSV dataset files (add your own)
+├── models/                  # Trained ML models
+└── docker-compose.yml       # Kafka environment setup
+```
+
+## Quick Start
+
+### 1. Install Dependencies
 
 ```bash
+pip install -e .
+```
+
+### 2. Prepare Data
+
+Place the following CSV files in `data/`:
+
+- `category.csv` - Product categories
+- `users.csv` - Customer information
+- `product.csv` - Product details
+- `sales.csv` - Transaction records
+- `click_stream_rt.csv` - Real-time clickstream data
+
+### 3. Start Kafka Environment
+
+```bash
+# Start Kafka + Zookeeper
+docker-compose up -d
+
+# Create topic
+docker exec -it kafka kafka-topics.sh \
+  --create --topic moth_clickstream \
+  --bootstrap-server localhost:9092 \
+  --partitions 3 --replication-factor 1
+```
+
+### 4. Run Pipeline
+
+**Option A: Using scripts**
+
+```bash
+# Start producer
 bash scripts/run_producer.sh
-```
 
-6. Start streaming job (example) — requires spark-submit in PATH:
-
-```bash
+# Start streaming job (new terminal)
 bash scripts/run_streaming.sh
 ```
 
-7. Use notebooks in `notebooks/` to explore results and visualizations.
+**Option B: Direct module execution**
+
+```bash
+# Producer
+python -m moth.kafka_producer_runner \
+  --broker localhost:9092 \
+  --topic moth_clickstream \
+  --csv ./data/click_stream_rt.csv
+
+# Consumer (new terminal)
+python -m moth.streaming_job_runner \
+  --kafka_bootstrap localhost:9092 \
+  --input_topic moth_clickstream \
+  --model ./models/best_model/model.pkl
+```
+
+### 5. Explore Results
+
+Open notebooks in `notebooks/` to view analysis and visualizations:
+
+- `batch_analysis.ipynb` - Batch analysis demo
+- `streaming_demo.ipynb` - Streaming pipeline demo
+
+## Troubleshooting
+
+**Check if Kafka is working:**
+
+```bash
+# List topics
+docker exec -it kafka kafka-topics.sh --list --bootstrap-server localhost:9092
+
+# Test consumer
+docker exec -it kafka kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic moth_clickstream \
+  --from-beginning
+```
 
 ## Running the streaming runner directly (python -m)
 

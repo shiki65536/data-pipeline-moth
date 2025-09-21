@@ -1,57 +1,72 @@
-"""Spark Structured Streaming job.
+"""Spark Structured Streaming job."""
 
-This module defines a function `run_streaming` which reads from a Kafka topic,
-joins static tables, runs a model prediction (placeholder), and writes outputs to parquet and Kafka.
-"""
 from pyspark.sql import SparkSession, functions as F, types as T
-import json
+import argparse
 
-def run_streaming(spark: SparkSession, kafka_bootstrap: str = 'localhost:9092', input_topic: str = 'moth_clickstream', checkpoint_location: str = '/tmp/moth_checkpoint', model_predict_fn=None, output_parquet_dir: str = './output/parquet'):
-    """Start a structured streaming job.
-
-    model_predict_fn: a callable that accepts a DataFrame and returns a DataFrame with a 'prediction' column.
-    """
-    # Read from Kafka
+def run_streaming(
+    spark: SparkSession,
+    kafka_bootstrap: str = "localhost:9092",
+    input_topic: str = "moth_clickstream",
+    checkpoint_location: str = "/tmp/moth_checkpoint",
+    model_predict_fn=None,
+    output_parquet_dir: str = "./output/parquet"
+):
     df = (
         spark.readStream
-        .format('kafka')
-        .option('kafka.bootstrap.servers', kafka_bootstrap)
-        .option('subscribe', input_topic)
-        .option('startingOffsets', 'earliest')
+        .format("kafka")
+        .option("kafka.bootstrap.servers", kafka_bootstrap)
+        .option("subscribe", input_topic)
+        .option("startingOffsets", "earliest")
         .load()
     )
 
-    # Kafka value is bytes (JSON string). Parse into columns
-    schema = T.StructType()  # flexible; user can parse further
-    # We parse value as string and then use from_json when schema is known
-    raw = df.selectExpr("CAST(value AS STRING) as value", 'timestamp')
-    parsed = raw.withColumn('json', F.from_json('value', T.MapType(T.StringType(), T.StringType())))
-    # Flatten the map into columns dynamically
-    cols = parsed.select('json').schema
+    raw = df.selectExpr("CAST(value AS STRING) as value", "timestamp")
+    parsed = raw.withColumn(
+        "json",
+        F.from_json("value", T.MapType(T.StringType(), T.StringType()))
+    )
 
-    # For demo, keep value as json string and add event_time
-    stream = parsed.withColumn('event_time', F.to_timestamp(F.col('json')['ts'].cast('long')))
+    stream = parsed.withColumn(
+        "event_time", F.to_timestamp(F.col("json")["ts"].cast("long"))
+    )
 
-    # Optionally, call model predict function
     if model_predict_fn is not None:
         predicted = model_predict_fn(stream)
     else:
-        # Add a placeholder prediction column of 0/1 randomly
-        predicted = stream.withColumn('prediction', F.lit(0))
+        predicted = stream.withColumn("prediction", F.lit(0))
 
-    # Write predictions to parquet for downstream consumption
     query = (
         predicted.writeStream
-        .format('parquet')
-        .option('path', output_parquet_dir)
-        .option('checkpointLocation', checkpoint_location)
-        .outputMode('append')
+        .format("parquet")
+        .option("path", output_parquet_dir)
+        .option("checkpointLocation", checkpoint_location)
+        .outputMode("append")
         .start()
     )
 
     return query
 
-if __name__ == '__main__':
-    spark = SparkSession.builder.appName('MOTH-Streaming-Demo').master('local[4]').getOrCreate()
-    q = run_streaming(spark)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--kafka_bootstrap", default="localhost:9092")
+    parser.add_argument("--input_topic", default="moth_clickstream")
+    parser.add_argument("--checkpoint", default="/tmp/moth_checkpoint")
+    parser.add_argument("--output_parquet", default="./output/parquet")
+    args = parser.parse_args()
+
+    spark = (
+        SparkSession.builder
+        .appName("MOTH-Streaming-Demo")
+        .master("local[4]")
+        .getOrCreate()
+    )
+
+    q = run_streaming(
+        spark,
+        kafka_bootstrap=args.kafka_bootstrap,
+        input_topic=args.input_topic,
+        checkpoint_location=args.checkpoint,
+        output_parquet_dir=args.output_parquet,
+    )
     q.awaitTermination()

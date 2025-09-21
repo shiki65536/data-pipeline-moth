@@ -42,7 +42,7 @@ def main():
     model = load_dummy_model(args.model)
     predict_fn = model_predict_fn_builder(model)
 
-    spark = spark_utils.create_spark('MOTH-Streaming-Runner', master='local[4]')
+    spark = spark_utils.create_spark('MOTH-Streaming-Runner')
     q = streaming_job.run_streaming(spark, kafka_bootstrap=args.kafka_bootstrap, input_topic=args.input_topic, checkpoint_location=args.checkpoint, model_predict_fn=predict_fn, output_parquet_dir=args.output_parquet)
     q.awaitTermination()
 
